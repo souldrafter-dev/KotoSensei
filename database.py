@@ -56,6 +56,51 @@ def init_db():
     conn.close()
     print(f"[Успех] База данных успешно инициализирована по пути: {DB_PATH}")
 
+def save_message(telegram_id: int, role: str, text: str): # Сохраняет реплику диалога в базу данных
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Сначала проверяем, есть ли пользователь в таблице users, если нет - создаем его
+    cursor.execute("INSERT OR IGNORE INTO users (telegram_id) VALUES (?)", (telegram_id,))
+
+    # Записываем само сообщение
+    cursor.execute("""
+        INSERT INTO chat_history (telegram_id, role, message_text)
+        VALUES (?, ?, ?)
+    """, (telegram_id, role, text))
+
+    conn.commit()
+    conn.close()
+
+def get_chat_history(telegram_id: int, limit: int = 10) -> list:
+    """Вытаскивает последние N сообщений из базы для контекста ИИ."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Берем последние сообщения, сортируя по ID
+    cursor.execute("""
+        SELECT role, message_text FROM chat_history 
+        WHERE telegram_id = ? 
+        ORDER BY id DESC LIMIT ?
+    """, (telegram_id, limit))
+    
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Переворачиваем сообщения, чтобы они шли в хронологическом порядке (от старых к новым)
+    rows.reverse()
+    
+    # Превращаем строки из БД в понятный для OpenAI/Ollama формат списка словарей
+    formatted_history = []
+    for row in rows:
+        formatted_history.append({"role": row[0], "content": row[1]})
+        
+    return formatted_history
+
+
+
 # Этот блок выполнится только если запустить файл database.py напрямую
 if __name__ == "__main__":
     init_db()
+    print("[Успех] Модуль базы данных обновлен и готов к работе!")
